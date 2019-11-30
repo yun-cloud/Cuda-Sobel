@@ -5,11 +5,11 @@ NVCCLDFLAGS  := -L/home/pp19/share/lib -Xlinker=-rpath,/home/pp19/share/lib -lla
 SRC := sobel.cu
 EXE := $(SRC:cu=cuda)
 
-TESTCASE     := candy
+TESTCASE ?= candy
 TESTCASE_DIR := ./cases
-INPUT_PNG    := $(TESTCASE_DIR)/$(TESTCASE).png
-OUTPUT_PNG   := out
-EXPECT_PNG   := $(TESTCASE_DIR)/$(TESTCASE).out.png
+INPUT_IMG  := $(TESTCASE_DIR)/$(TESTCASE).png
+EXPECT_IMG := $(TESTCASE_DIR)/$(TESTCASE).out.png
+OUTPUT_IMG := out
 
 TARGETS := $(EXE)
 
@@ -21,8 +21,9 @@ $(EXE): $(SRC)
 
 .PHONY: run
 run: $(EXE)
-	./$< $(INPUT_PNG) $(OUTPUT_PNG)
-	lab5-diff $(OUTPUT_PNG) $(EXPECT_PNG)
+	$(RM) $(OUTPUT_IMG)
+	srun -n1 -p pp --gres=gpu:1 time ./$< $(INPUT_IMG) $(OUTPUT_IMG)
+	lab5-diff $(EXPECT_IMG) $(OUTPUT_IMG)
 
 .PHONY: clean
 clean:
