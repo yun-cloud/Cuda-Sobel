@@ -12,21 +12,16 @@
 #define yBound Y / 2
 #define SCALE 8
 
-__constant__ int filter[Z][Y][X] = {
-  {
-    { -1, -4, -6, -4, -1 },
-    { -2, -8, -12, -8, -2 },
-    { 0, 0, 0, 0, 0 },
-    { 2, 8, 12, 8, 2 },
-    { 1, 4, 6, 4, 1 } },
-  {
-    { -1, -2, 0, 2, 1 },
-    { -4, -8, 0, 8, 4 },
-    { -6, -12, 0, 12, 6 },
-    { -4, -8, 0, 8, 4 },
-    { -1, -2, 0, 2, 1 }
-  }
-};
+__constant__ int filter[Z][Y][X] = { { { -1, -4, -6, -4, -1 },
+                                       { -2, -8, -12, -8, -2 },
+                                       { 0, 0, 0, 0, 0 },
+                                       { 2, 8, 12, 8, 2 },
+                                       { 1, 4, 6, 4, 1 } },
+                                     { { -1, -2, 0, 2, 1 },
+                                       { -4, -8, 0, 8, 4 },
+                                       { -6, -12, 0, 12, 6 },
+                                       { -4, -8, 0, 8, 4 },
+                                       { -1, -2, 0, 2, 1 } } };
 
 inline __device__ int bound_check(int val, int lower, int upper) {
   if (val >= lower && val < upper)
@@ -35,10 +30,12 @@ inline __device__ int bound_check(int val, int lower, int upper) {
     return 0;
 }
 
-__global__ void sobel(unsigned char *s, unsigned char *t, unsigned height, unsigned width, unsigned channels) {
+__global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
+                      unsigned width, unsigned channels) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   double val[Z][3];
-  if (tid >= height) return;
+  if (tid >= height)
+    return;
 
   int y = tid;
   for (int x = 0; x < width; ++x) {
@@ -53,9 +50,12 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height, unsig
       for (int v = -yBound; v <= yBound; ++v) {
         for (int u = -xBound; u <= xBound; ++u) {
           if (bound_check(x + u, 0, width) && bound_check(y + v, 0, height)) {
-            const unsigned char R = s[channels * (width * (y + v) + (x + u)) + 2];
-            const unsigned char G = s[channels * (width * (y + v) + (x + u)) + 1];
-            const unsigned char B = s[channels * (width * (y + v) + (x + u)) + 0];
+            const unsigned char R =
+                s[channels * (width * (y + v) + (x + u)) + 2];
+            const unsigned char G =
+                s[channels * (width * (y + v) + (x + u)) + 1];
+            const unsigned char B =
+                s[channels * (width * (y + v) + (x + u)) + 0];
             val[i][2] += R * filter[i][u + xBound][v + yBound];
             val[i][1] += G * filter[i][u + xBound][v + yBound];
             val[i][0] += B * filter[i][u + xBound][v + yBound];
@@ -97,29 +97,34 @@ int main(int argc, char **argv) {
 
   auto Tstart = std::chrono::high_resolution_clock::now();
 
-  dst = (unsigned char *)malloc(height * width * channels * sizeof(unsigned char));
-  cudaHostRegister(src, height * width * channels * sizeof(unsigned char), cudaHostRegisterDefault);
+  dst = (unsigned char *)malloc(height * width * channels *
+                                sizeof(unsigned char));
+  cudaHostRegister(src, height * width * channels * sizeof(unsigned char),
+                   cudaHostRegisterDefault);
 
   // cudaMalloc(...) for device src and device dst
   cudaMalloc(&dsrc, height * width * channels * sizeof(unsigned char));
   cudaMalloc(&ddst, height * width * channels * sizeof(unsigned char));
 
   // cudaMemcpy(...) copy source image to device (filter matrix if necessary)
-  cudaMemcpy(dsrc, src, height * width * channels * sizeof(unsigned char), cudaMemcpyHostToDevice);
+  cudaMemcpy(dsrc, src, height * width * channels * sizeof(unsigned char),
+             cudaMemcpyHostToDevice);
 
   // decide to use how many blocks and threads
   const int num_threads = 256;
   const int num_blocks = height / num_threads + 1;
 
   // launch cuda kernel
-  sobel<<<num_blocks, num_threads>>> (dsrc, ddst, height, width, channels);
+  sobel << <num_blocks, num_threads>>> (dsrc, ddst, height, width, channels);
 
   // cudaMemcpy(...) copy result image to host
-  cudaMemcpy(dst, ddst, height * width * channels * sizeof(unsigned char), cudaMemcpyDeviceToHost);
+  cudaMemcpy(dst, ddst, height * width * channels * sizeof(unsigned char),
+             cudaMemcpyDeviceToHost);
 
   auto Tend = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration = Tend - Tstart;
-  std::cout << "Measured Compute Time: " << duration.count() << "s" << std::endl;
+  std::cout << "Measured Compute Time: " << duration.count() << "s"
+            << std::endl;
 
   write_png(argv[2], dst, height, width, channels);
   free(src);
