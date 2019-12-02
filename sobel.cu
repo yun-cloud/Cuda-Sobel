@@ -88,14 +88,15 @@ int main(int argc, char **argv) {
   unsigned height, width, channels;
   unsigned char *src = NULL, *dst;
   unsigned char *dsrc, *ddst;
+  cudaEvent_t kernel_begin, kernel_end;
+  cudaEventCreate(&kernel_begin);
+  cudaEventCreate(&kernel_end);
 
   /* read the image to src, and get height, width, channels */
   if (read_png(argv[1], &src, &height, &width, &channels)) {
     std::cerr << "Error in read png" << std::endl;
     return -1;
   }
-
-  auto Tstart = std::chrono::high_resolution_clock::now();
 
   dst = (unsigned char *)malloc(height * width * channels *
                                 sizeof(unsigned char));
@@ -115,16 +116,18 @@ int main(int argc, char **argv) {
   const int num_blocks = height / num_threads + 1;
 
   // launch cuda kernel
+  cudaEventRecord(kernel_begin);
   sobel << <num_blocks, num_threads>>> (dsrc, ddst, height, width, channels);
+  cudaEventRecord(kernel_end);
 
   // cudaMemcpy(...) copy result image to host
   cudaMemcpy(dst, ddst, height * width * channels * sizeof(unsigned char),
              cudaMemcpyDeviceToHost);
 
-  auto Tend = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration = Tend - Tstart;
-  std::cout << "Measured Compute Time: " << duration.count() << "s"
-            << std::endl;
+  cudaEventSynchronize(kernel_end);
+  float kernel_time = 0;
+  cudaEventElapsedTime(&kernel_time, kernel_begin, kernel_end);
+  std::cout << "Kernel execution time: " << kernel_time << "ms\n";
 
   write_png(argv[2], dst, height, width, channels);
   free(src);
