@@ -12,6 +12,8 @@
 #define yBound Y / 2
 #define SCALE 8
 
+#define TILE_WIDTH 16
+
 #define CHK(ans)                                                               \
   { gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -47,8 +49,10 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
                       unsigned width, unsigned channels) {
   float val[Z][3];
 
-  for (int y = blockIdx.x; y < height; y += gridDim.x) {
-    for (int x = threadIdx.x; x < width; x += blockDim.x) {
+  int y = blockIdx.y * TILE_WIDTH + threadIdx.y;
+  int x = blockIdx.x * TILE_WIDTH + threadIdx.x;
+  {
+    if (bound_check(y, 0, height) && bound_check(x, 0, width)) {
       /* Z axis of filter */
       for (int i = 0; i < Z; ++i) {
 
@@ -123,8 +127,9 @@ int main(int argc, char **argv) {
                  cudaMemcpyHostToDevice));
 
   // decide to use how many blocks and threads
-  const int num_threads = 256;
-  const int num_blocks = 2048;
+  dim3 num_threads(TILE_WIDTH, TILE_WIDTH);
+  dim3 num_blocks(std::ceil((float)width / TILE_WIDTH),
+                  std::ceil((float)height / TILE_WIDTH));
 
   // launch cuda kernel
   CHK(cudaEventRecord(kernel_begin));
