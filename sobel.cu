@@ -13,6 +13,12 @@
 #define SCALE 8
 
 #define TILE_WIDTH 16
+#define MASK_WIDTH 5
+// (MASK_WIDTH - 1) / 2
+#define MASK_RADIUS 2
+// TILE_WIDTH + MASK_WIDTH - 1
+#define SHARE_MEMORY_WIDTH 20
+#define CHANNEL_NUM 3
 
 #define CHK(ans)                                                               \
   { gpuAssert((ans), __FILE__, __LINE__); }
@@ -47,12 +53,52 @@ inline __device__ int bound_check(int val, int lower, int upper) {
 
 __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
                       unsigned width, unsigned channels) {
+  __shared__ unsigned char sm
+      [CHANNEL_NUM * SHARE_MEMORY_WIDTH * SHARE_MEMORY_WIDTH];
+  for (int c = 0; c < CHANNEL_NUM; ++c) {
+    // ceil(SHARE_MEMORY_WIDTH^2 / TILE_WIDTH^2): how many times you need to load
+    // First batch load
+    int ID = threadIdx.y * TILE_WIDTH + threadIdx.x;
+    int dest_y = ID / SHARE_MEMORY_WIDTH;
+    int dest_x = ID % SHARE_MEMORY_WIDTH;
+    int src_y = blockIdx.y * TILE_WIDTH + dest_y - MASK_RADIUS;
+    int src_x = blockIdx.x * TILE_WIDTH + dest_x - MASK_RADIUS;
+    int dest_index = (dest_y * SHARE_MEMORY_WIDTH + dest_x) * CHANNEL_NUM + c;
+    int src_index = (src_y * width + src_x) * CHANNEL_NUM + c;
+    if (dest_y < SHARE_MEMORY_WIDTH) {
+      if (bound_check(src_y, 0, height) && bound_check(src_x, 0, width)) {
+        sm[dest_index] = s[src_index];
+      } else {
+        sm[dest_index] = 0;
+      }
+    }
+
+    // second batch load
+    ID = threadIdx.y * TILE_WIDTH + threadIdx.x + TILE_WIDTH * TILE_WIDTH;
+    dest_y = ID / SHARE_MEMORY_WIDTH;
+    dest_x = ID % SHARE_MEMORY_WIDTH;
+    src_y = blockIdx.y * TILE_WIDTH + dest_y - MASK_RADIUS;
+    src_x = blockIdx.x * TILE_WIDTH + dest_x - MASK_RADIUS;
+    dest_index = (dest_y * SHARE_MEMORY_WIDTH + dest_x) * CHANNEL_NUM + c;
+    src_index = (src_y * width + src_x) * CHANNEL_NUM + c;
+    if (dest_y < SHARE_MEMORY_WIDTH) {
+      if (bound_check(src_y, 0, height) && bound_check(src_x, 0, width)) {
+        sm[dest_index] = s[src_index];
+      } else {
+        sm[dest_index] = 0;
+      }
+    }
+  }
+  __syncthreads();
+
   float val[Z][3];
 
-  int y = blockIdx.y * TILE_WIDTH + threadIdx.y;
-  int x = blockIdx.x * TILE_WIDTH + threadIdx.x;
+  int src_y = blockIdx.y * TILE_WIDTH + threadIdx.y;
+  int src_x = blockIdx.x * TILE_WIDTH + threadIdx.x;
+  int y = threadIdx.y;
+  int x = threadIdx.x;
   {
-    if (bound_check(y, 0, height) && bound_check(x, 0, width)) {
+    if (bound_check(src_y, 0, height) && bound_check(src_x, 0, width)) {
       /* Z axis of filter */
       for (int i = 0; i < Z; ++i) {
 
@@ -61,18 +107,18 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
         val[i][0] = 0.;
 
         /* Y and X axis of filter */
-        for (int v = -yBound; v <= yBound; ++v) {
-          for (int u = -xBound; u <= xBound; ++u) {
-            if (bound_check(x + u, 0, width) && bound_check(y + v, 0, height)) {
+        for (int v = 0; v < MASK_WIDTH; ++v) {
+          for (int u = 0; u < MASK_WIDTH; ++u) {
+            {
               const unsigned char R =
-                  s[channels * (width * (y + v) + (x + u)) + 2];
+                  sm[channels * (SHARE_MEMORY_WIDTH * (y + v) + (x + u)) + 2];
               const unsigned char G =
-                  s[channels * (width * (y + v) + (x + u)) + 1];
+                  sm[channels * (SHARE_MEMORY_WIDTH * (y + v) + (x + u)) + 1];
               const unsigned char B =
-                  s[channels * (width * (y + v) + (x + u)) + 0];
-              val[i][2] += R * filter[i][u + xBound][v + yBound];
-              val[i][1] += G * filter[i][u + xBound][v + yBound];
-              val[i][0] += B * filter[i][u + xBound][v + yBound];
+                  sm[channels * (SHARE_MEMORY_WIDTH * (y + v) + (x + u)) + 0];
+              val[i][2] += R * filter[i][u][v];
+              val[i][1] += G * filter[i][u][v];
+              val[i][0] += B * filter[i][u][v];
             }
           }
         }
@@ -91,9 +137,9 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
       const unsigned char cR = (totalR > 255.) ? 255 : totalR;
       const unsigned char cG = (totalG > 255.) ? 255 : totalG;
       const unsigned char cB = (totalB > 255.) ? 255 : totalB;
-      t[channels * (width * y + x) + 2] = cR;
-      t[channels * (width * y + x) + 1] = cG;
-      t[channels * (width * y + x) + 0] = cB;
+      t[channels * (width * src_y + src_x) + 2] = cR;
+      t[channels * (width * src_y + src_x) + 1] = cG;
+      t[channels * (width * src_y + src_x) + 0] = cB;
     }
   }
 }
