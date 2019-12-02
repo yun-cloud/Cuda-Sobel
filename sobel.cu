@@ -45,13 +45,10 @@ inline __device__ int bound_check(int val, int lower, int upper) {
 
 __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
                       unsigned width, unsigned channels) {
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
   double val[Z][3];
-  if (tid >= height)
-    return;
 
-  int y = tid;
-  for (int x = 0; x < width; ++x) {
+  for (int y = blockIdx.x; y < height; y += gridDim.x) {
+  for (int x = threadIdx.x; x < width; x += blockDim.x) {
     /* Z axis of filter */
     for (int i = 0; i < Z; ++i) {
 
@@ -94,6 +91,7 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
     t[channels * (width * y + x) + 1] = cG;
     t[channels * (width * y + x) + 0] = cB;
   }
+  }
 }
 
 int main(int argc, char **argv) {
@@ -126,7 +124,7 @@ int main(int argc, char **argv) {
 
   // decide to use how many blocks and threads
   const int num_threads = 256;
-  const int num_blocks = height / num_threads + 1;
+  const int num_blocks = 2048;
 
   // launch cuda kernel
   CHK(cudaEventRecord(kernel_begin));
