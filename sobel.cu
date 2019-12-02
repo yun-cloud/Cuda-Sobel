@@ -12,6 +12,19 @@
 #define yBound Y / 2
 #define SCALE 8
 
+#define CHK(ans)                                                               \
+  { gpuAssert((ans), __FILE__, __LINE__); }
+
+inline void gpuAssert(cudaError_t code, const char *file, int line,
+                      bool abort = true) {
+  if (code != cudaSuccess) {
+    fprintf(stderr, "[GPUassert] %s(%d): %s\n", cudaGetErrorString(code), file,
+            line);
+    if (abort)
+      exit(code);
+  }
+}
+
 __constant__ int filter[Z][Y][X] = { { { -1, -4, -6, -4, -1 },
                                        { -2, -8, -12, -8, -2 },
                                        { 0, 0, 0, 0, 0 },
@@ -89,8 +102,8 @@ int main(int argc, char **argv) {
   unsigned char *src = NULL, *dst;
   unsigned char *dsrc, *ddst;
   cudaEvent_t kernel_begin, kernel_end;
-  cudaEventCreate(&kernel_begin);
-  cudaEventCreate(&kernel_end);
+  CHK(cudaEventCreate(&kernel_begin));
+  CHK(cudaEventCreate(&kernel_end));
 
   /* read the image to src, and get height, width, channels */
   if (read_png(argv[1], &src, &height, &width, &channels)) {
@@ -100,39 +113,39 @@ int main(int argc, char **argv) {
 
   dst = (unsigned char *)malloc(height * width * channels *
                                 sizeof(unsigned char));
-  cudaHostRegister(src, height * width * channels * sizeof(unsigned char),
-                   cudaHostRegisterDefault);
+  CHK(cudaHostRegister(src, height * width * channels * sizeof(unsigned char),
+                       cudaHostRegisterDefault));
 
   // cudaMalloc(...) for device src and device dst
-  cudaMalloc(&dsrc, height * width * channels * sizeof(unsigned char));
-  cudaMalloc(&ddst, height * width * channels * sizeof(unsigned char));
+  CHK(cudaMalloc(&dsrc, height * width * channels * sizeof(unsigned char)));
+  CHK(cudaMalloc(&ddst, height * width * channels * sizeof(unsigned char)));
 
   // cudaMemcpy(...) copy source image to device (filter matrix if necessary)
-  cudaMemcpy(dsrc, src, height * width * channels * sizeof(unsigned char),
-             cudaMemcpyHostToDevice);
+  CHK(cudaMemcpy(dsrc, src, height * width * channels * sizeof(unsigned char),
+                 cudaMemcpyHostToDevice));
 
   // decide to use how many blocks and threads
   const int num_threads = 256;
   const int num_blocks = height / num_threads + 1;
 
   // launch cuda kernel
-  cudaEventRecord(kernel_begin);
+  CHK(cudaEventRecord(kernel_begin));
   sobel << <num_blocks, num_threads>>> (dsrc, ddst, height, width, channels);
-  cudaEventRecord(kernel_end);
+  CHK(cudaEventRecord(kernel_end));
 
   // cudaMemcpy(...) copy result image to host
-  cudaMemcpy(dst, ddst, height * width * channels * sizeof(unsigned char),
-             cudaMemcpyDeviceToHost);
+  CHK(cudaMemcpy(dst, ddst, height * width * channels * sizeof(unsigned char),
+                 cudaMemcpyDeviceToHost));
 
-  cudaEventSynchronize(kernel_end);
+  CHK(cudaEventSynchronize(kernel_end));
   float kernel_time = 0;
-  cudaEventElapsedTime(&kernel_time, kernel_begin, kernel_end);
+  CHK(cudaEventElapsedTime(&kernel_time, kernel_begin, kernel_end));
   std::cout << "Kernel execution time: " << kernel_time << "ms\n";
 
   write_png(argv[2], dst, height, width, channels);
   free(src);
   free(dst);
-  cudaFree(dsrc);
-  cudaFree(ddst);
+  CHK(cudaFree(dsrc));
+  CHK(cudaFree(ddst));
   return 0;
 }
