@@ -48,49 +48,49 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
   double val[Z][3];
 
   for (int y = blockIdx.x; y < height; y += gridDim.x) {
-  for (int x = threadIdx.x; x < width; x += blockDim.x) {
-    /* Z axis of filter */
-    for (int i = 0; i < Z; ++i) {
+    for (int x = threadIdx.x; x < width; x += blockDim.x) {
+      /* Z axis of filter */
+      for (int i = 0; i < Z; ++i) {
 
-      val[i][2] = 0.;
-      val[i][1] = 0.;
-      val[i][0] = 0.;
+        val[i][2] = 0.;
+        val[i][1] = 0.;
+        val[i][0] = 0.;
 
-      /* Y and X axis of filter */
-      for (int v = -yBound; v <= yBound; ++v) {
-        for (int u = -xBound; u <= xBound; ++u) {
-          if (bound_check(x + u, 0, width) && bound_check(y + v, 0, height)) {
-            const unsigned char R =
-                s[channels * (width * (y + v) + (x + u)) + 2];
-            const unsigned char G =
-                s[channels * (width * (y + v) + (x + u)) + 1];
-            const unsigned char B =
-                s[channels * (width * (y + v) + (x + u)) + 0];
-            val[i][2] += R * filter[i][u + xBound][v + yBound];
-            val[i][1] += G * filter[i][u + xBound][v + yBound];
-            val[i][0] += B * filter[i][u + xBound][v + yBound];
+        /* Y and X axis of filter */
+        for (int v = -yBound; v <= yBound; ++v) {
+          for (int u = -xBound; u <= xBound; ++u) {
+            if (bound_check(x + u, 0, width) && bound_check(y + v, 0, height)) {
+              const unsigned char R =
+                  s[channels * (width * (y + v) + (x + u)) + 2];
+              const unsigned char G =
+                  s[channels * (width * (y + v) + (x + u)) + 1];
+              const unsigned char B =
+                  s[channels * (width * (y + v) + (x + u)) + 0];
+              val[i][2] += R * filter[i][u + xBound][v + yBound];
+              val[i][1] += G * filter[i][u + xBound][v + yBound];
+              val[i][0] += B * filter[i][u + xBound][v + yBound];
+            }
           }
         }
       }
+      double totalR = 0.;
+      double totalG = 0.;
+      double totalB = 0.;
+      for (int i = 0; i < Z; ++i) {
+        totalR += val[i][2] * val[i][2];
+        totalG += val[i][1] * val[i][1];
+        totalB += val[i][0] * val[i][0];
+      }
+      totalR = sqrt(totalR) / SCALE;
+      totalG = sqrt(totalG) / SCALE;
+      totalB = sqrt(totalB) / SCALE;
+      const unsigned char cR = (totalR > 255.) ? 255 : totalR;
+      const unsigned char cG = (totalG > 255.) ? 255 : totalG;
+      const unsigned char cB = (totalB > 255.) ? 255 : totalB;
+      t[channels * (width * y + x) + 2] = cR;
+      t[channels * (width * y + x) + 1] = cG;
+      t[channels * (width * y + x) + 0] = cB;
     }
-    double totalR = 0.;
-    double totalG = 0.;
-    double totalB = 0.;
-    for (int i = 0; i < Z; ++i) {
-      totalR += val[i][2] * val[i][2];
-      totalG += val[i][1] * val[i][1];
-      totalB += val[i][0] * val[i][0];
-    }
-    totalR = sqrt(totalR) / SCALE;
-    totalG = sqrt(totalG) / SCALE;
-    totalB = sqrt(totalB) / SCALE;
-    const unsigned char cR = (totalR > 255.) ? 255 : totalR;
-    const unsigned char cG = (totalG > 255.) ? 255 : totalG;
-    const unsigned char cB = (totalB > 255.) ? 255 : totalB;
-    t[channels * (width * y + x) + 2] = cR;
-    t[channels * (width * y + x) + 1] = cG;
-    t[channels * (width * y + x) + 0] = cB;
-  }
   }
 }
 
