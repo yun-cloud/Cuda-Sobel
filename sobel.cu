@@ -45,7 +45,7 @@ inline __device__ int bound_check(int val, int lower, int upper) {
 
 __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
                       unsigned width, unsigned channels) {
-  double val[Z][3];
+  float val[Z][3];
 
   for (int y = blockIdx.x; y < height; y += gridDim.x) {
     for (int x = threadIdx.x; x < width; x += blockDim.x) {
@@ -73,9 +73,9 @@ __global__ void sobel(unsigned char *s, unsigned char *t, unsigned height,
           }
         }
       }
-      double totalR = 0.;
-      double totalG = 0.;
-      double totalB = 0.;
+      float totalR = 0.;
+      float totalG = 0.;
+      float totalB = 0.;
       for (int i = 0; i < Z; ++i) {
         totalR += val[i][2] * val[i][2];
         totalG += val[i][1] * val[i][1];
